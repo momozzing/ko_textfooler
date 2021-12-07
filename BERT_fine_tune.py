@@ -1,5 +1,5 @@
 '''
-deepspeed --num_gpus=1 BoolQ_fine_tune.py
+deepspeed --num_gpus=1 BERT_fine_tune.py
 '''
 
 from argparse import ArgumentParser
@@ -29,7 +29,7 @@ random.seed(random_seed)
 
 task = "NSMC"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-model_name = "klue/bert-base"
+model_name = "monologg/kobert"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 # SPECIAL_TOKENS = {
 #     "bos_token": "<bos>",
@@ -55,7 +55,7 @@ parser.add_argument("--batch_size", default=128, type=int)
 # parser.add_argument("--sep_token", default=tokenizer.sep_token, type=str)
 args = parser.parse_args()
 
-wandb.init(project="ko_textfooler", name=f"{model_name}-{task}-log_test")
+wandb.init(project="ko_textfooler", name=f"{model_name}-{task}")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
 train_data = train_data[:120000]
@@ -173,7 +173,7 @@ for epoch in range(args.epoch):
     wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
     wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
     wandb.log({"epoch": epochs})
-    torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}-log_test.pt")
+    torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 

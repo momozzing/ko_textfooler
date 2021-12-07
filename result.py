@@ -35,7 +35,7 @@ model.eval()
 model.load_state_dict(torch.load(ckpt_name, map_location="cpu"))
 model.cuda()
 # eval_data = eval_data.dropna(axis=0)
-# all_df = all_df[:50000]
+all_df = all_df[:120000]
 eval_text = (
     all_df["a_text"]
 )
