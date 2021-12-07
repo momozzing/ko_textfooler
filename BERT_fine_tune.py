@@ -55,7 +55,7 @@ parser.add_argument("--batch_size", default=128, type=int)
 # parser.add_argument("--sep_token", default=tokenizer.sep_token, type=str)
 args = parser.parse_args()
 
-wandb.init(project="ko_textfooler", name=f"{model_name}-{task}")
+wandb.init(project="ko_textfooler", name=f"{model_name}-{task}-log_test")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
 train_data = train_data[:120000]
@@ -138,9 +138,9 @@ for epoch in range(args.epoch):
         for res, lab in zip(classification_results, label):
             if res == lab:
                 acc += 1
-                
-        wandb.log({"loss": loss})
-        wandb.log({"acc": acc / len(classification_results)})
+
+    wandb.log({"loss": loss})
+    wandb.log({"acc": acc / len(classification_results)})   ## 탭하나 안에 넣으면 step단위로 볼수있음. 
     model.eval()
     tmp=[]
     for eval in tqdm(eval_loader):
@@ -170,10 +170,10 @@ for epoch in range(args.epoch):
             if res == lab:
                 eval_acc += 1
         
-        wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
-        wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})
-        wandb.log({"epoch": epochs})
-        torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}.pt")
+    wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
+    wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
+    wandb.log({"epoch": epochs})
+    torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}-log_test.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
