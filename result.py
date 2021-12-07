@@ -11,14 +11,33 @@ ckpt_name = "model_save/klue-bert-base-2-NSMC-log_test.pt"
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+
+
+base_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
+base_data = base_data[['document','label']]
+eval_data = pd.read_csv("data/eda_data.txt", delimiter="\t")
+
+all_df = pd.concat([base_data, eval_data], axis=1)      ####
+all_df.columns = ['text', 'label', 'a_text', 'a_label']
+
+all_df = all_df.dropna(axis=0)
+all_df = all_df.reset_index(drop=True)
+# result_data = pd.read_csv('data/result.txt', delimiter = "\t")       
+
+# print(all_df)
+
+# print(result_data)
+# print(result_data.isnull().sum())
+# print(len(result_data))
+
+
 model.eval()
 model.load_state_dict(torch.load(ckpt_name, map_location="cpu"))
 model.cuda()
-eval_data = pd.read_csv("data/eda_data.txt", delimiter="\t")
-eval_data = eval_data.dropna(axis=0)
-eval_data = eval_data[:100]
+# eval_data = eval_data.dropna(axis=0)
+# all_df = all_df[:50000]
 eval_text = (
-    eval_data["document"]
+    all_df["a_text"]
 )
 
 # dataset = [
@@ -51,17 +70,16 @@ for data in tqdm(eval_text):
 
 # print(submission)
 
-eda_data = pd.DataFrame(submission, columns=['document', 'label'])
-eda_data.to_csv('data/result.txt', index=False, sep = '\t')
+result_data = pd.DataFrame(submission, columns=['document', 'label'])
+result_data.to_csv('data/result.txt', index=False, sep = '\t')             
 
-base_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
+base_data = all_df[['text','label']]
 
-for idx, i in enumerate(range(base_data['label'])):
-    
-    print(idx, i)
+target_df = pd.concat([base_data, result_data], axis=1)      ####
+target_df.columns = ['text', 'label', 'a_text', 'a_label']
 
-    # if 
+attack_df = target_df[(target_df['label'] != target_df['a_label'])]
 
+print(f"acc: {((len(target_df) - len(attack_df)) / len(target_df))*100}%")
 
-    # if classification_results == label:
-    #     acc += 1
+attack_df.to_csv('data/attack_result', index=False, sep="\t")
