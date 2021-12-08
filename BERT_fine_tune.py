@@ -27,10 +27,20 @@ np.random.seed(random_seed)
 random.seed(random_seed)
 ##################################
 
+parser = ArgumentParser()
+parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
+parser.add_argument("--local_rank", type=int)
+parser.add_argument("--epoch", default=20, type=int)
+parser.add_argument("--batch_size", default=128, type=int)
+# parser.add_argument("--cls_token", default=tokenizer.cls_token, type=str)
+parser.add_argument("--task", default="klue/bert-base", type=str)
+args = parser.parse_args()
+
+
 task = "NSMC"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-model_name = "monologg/kobert"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+# model_name = "skt/kobert-base-v1"
+tokenizer = AutoTokenizer.from_pretrained(args.task)
 # SPECIAL_TOKENS = {
 #     "bos_token": "<bos>",
 #     "eos_token": "<eos>",
@@ -41,21 +51,13 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 # tokenizer.add_special_tokens(SPECIAL_TOKENS)
 
 model = AutoModelForSequenceClassification.from_pretrained(
-    model_name,
+    args.task,
     num_labels=2,
 ).cuda()
 
 # model.resize_token_embeddings(len(tokenizer)) 
 
-parser = ArgumentParser()
-parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
-parser.add_argument("--local_rank", type=int)
-parser.add_argument("--epoch", default=10, type=int)
-parser.add_argument("--batch_size", default=128, type=int)
-# parser.add_argument("--sep_token", default=tokenizer.sep_token, type=str)
-args = parser.parse_args()
-
-wandb.init(project="ko_textfooler", name=f"{model_name}-{task}")
+wandb.init(project="ko_textfooler", name=f"{args.task}-{task}")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
 train_data = train_data[:120000]
@@ -65,7 +67,7 @@ train_text, train_labels = (
 )
 
 dataset = [
-    {"data": t, "label": l}
+    {"data": tokenizer.cls_token + t, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
 train_loader = DataLoader(
@@ -85,7 +87,7 @@ eval_text, eval_labels = (
 )
 
 dataset = [
-    {"data": t, "label": l}
+    {"data": tokenizer.cls_token + t, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 eval_loader = DataLoader(
@@ -118,7 +120,7 @@ for epoch in range(args.epoch):
             truncation=True,
             padding=True,
             # is_split_into_words=True
-            # max_length=100
+            max_length=100
         )
 
         input_ids = tokens.input_ids.cuda()
@@ -151,7 +153,7 @@ for epoch in range(args.epoch):
             truncation=True,
             padding=True,
             # is_split_into_words=True
-            # max_length=100
+            max_length=100
         )
         input_ids = eval_tokens.input_ids.cuda()
         attention_mask = eval_tokens.attention_mask.cuda()
@@ -173,7 +175,7 @@ for epoch in range(args.epoch):
     wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
     wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
     wandb.log({"epoch": epochs})
-    torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}.pt")
+    torch.save(model.state_dict(), f"model_save/{args.task.replace('/', '-')}-{epochs}-{task}.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 

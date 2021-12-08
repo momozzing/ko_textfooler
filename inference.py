@@ -23,7 +23,7 @@ eval_text, eval_labels = (
 )
 
 dataset = [
-    {"data": t, "label": l}
+    {"data": tokenizer.cls_token + t, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 

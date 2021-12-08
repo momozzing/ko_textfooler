@@ -40,10 +40,10 @@ eval_text = (
     all_df["a_text"]
 )
 
-# dataset = [
-#     {"data": t}
-#     for t in eval_text
-# ]
+dataset = [
+    {"data": tokenizer.cls_token + t}
+    for t in eval_text
+]
 
 submission = []
 
