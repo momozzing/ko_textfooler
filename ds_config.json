@@ -1,5 +1,5 @@
 {
-  "train_batch_size": 512,
+  "train_batch_size": 64,
   "fp16": {
     "enabled": true,
     "initial_scale_power": 8
