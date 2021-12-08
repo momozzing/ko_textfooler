@@ -67,9 +67,10 @@ train_text, train_labels = (
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t, "label": l}
+    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
+# print(dataset)
 train_loader = DataLoader(
     dataset,
     batch_size=args.batch_size,
