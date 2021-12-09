@@ -11,9 +11,10 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from torch.optim import AdamW, adamw
 
-import deepspeed
-from deepspeed.ops.adam import DeepSpeedCPUAdam
+# import deepspeed
+# from deepspeed.ops.adam import DeepSpeedCPUAdam
 import wandb
 
 #############################################    -> 실험결과 FIX
@@ -99,13 +100,10 @@ eval_loader = DataLoader(
     pin_memory=True,
 )
 
-optimizer = DeepSpeedCPUAdam(
+optimizer = adamw(
     lr=3e-5, weight_decay=3e-7, model_params=model.parameters()
 )
 
-engine, optimizer, _, _ = deepspeed.initialize(
-    args=args, model=model, optimizer=optimizer
-)
 epochs = 0
 # step = 0
 for epoch in range(args.epoch):
@@ -125,13 +123,13 @@ for epoch in range(args.epoch):
 
         input_ids = tokens.input_ids.cuda()
         attention_mask = tokens.attention_mask.cuda()
-        output = engine.forward(
+        output = model.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=label
         )
         loss = output.loss
-        engine.backward(loss)
+        model.backward(loss)
         optimizer.step()
         classification_results = output.logits.argmax(-1)
         # print(classification_results.size(), label.size())   ### size 동일 
@@ -158,7 +156,7 @@ for epoch in range(args.epoch):
         input_ids = eval_tokens.input_ids.cuda()
         attention_mask = eval_tokens.attention_mask.cuda()
         
-        eval_out = engine.forward(
+        eval_out = model.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=eval_label
