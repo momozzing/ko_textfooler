@@ -58,7 +58,7 @@ model = AutoModelForSequenceClassification.from_pretrained(
 
 # model.resize_token_embeddings(len(tokenizer)) 
 
-wandb.init(project="ko_textfooler", name=f"{args.model}-{task}")
+wandb.init(project="ko_textfooler", name=f"{args.model}-{task}-deep")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
 train_data = train_data[:120000]
@@ -68,7 +68,7 @@ train_text, train_labels = (
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": tokenizer.cls_token + t, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
 # print(dataset)
@@ -89,7 +89,7 @@ eval_text, eval_labels = (
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": tokenizer.cls_token + t, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 eval_loader = DataLoader(
@@ -100,8 +100,8 @@ eval_loader = DataLoader(
     pin_memory=True,
 )
 
-optimizer = adamw(
-    lr=3e-5, weight_decay=3e-7, model_params=model.parameters()
+optimizer = AdamW(params=model.parameters(),
+    lr=3e-5, weight_decay=3e-7
 )
 
 epochs = 0
@@ -129,7 +129,7 @@ for epoch in range(args.epoch):
             labels=label
         )
         loss = output.loss
-        model.backward(loss)
+        loss.backward()        
         optimizer.step()
         classification_results = output.logits.argmax(-1)
         # print(classification_results.size(), label.size())   ### size 동일 
@@ -173,7 +173,7 @@ for epoch in range(args.epoch):
     wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
     wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
     wandb.log({"epoch": epochs})
-    torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}.pt")
+    torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}-deep.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
