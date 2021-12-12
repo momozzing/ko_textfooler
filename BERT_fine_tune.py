@@ -10,8 +10,7 @@ import random
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, tokenization_utils
-
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import deepspeed
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 import wandb
@@ -58,10 +57,10 @@ model = AutoModelForSequenceClassification.from_pretrained(
 # model.resize_token_embeddings(len(tokenizer)) 
 
 wandb.init(project="ko_textfooler", name=f"{args.model}-{task}")
-total_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
-total_data = total_data.dropna(axis=0)
+train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
+train_data = train_data.dropna(axis=0)
 
-train_data = total_data[:120000]
+# train_data = total_data[:120000]
 train_text, train_labels = (
     train_data["document"].values,
     train_data["label"].values,
@@ -80,7 +79,9 @@ train_loader = DataLoader(
     pin_memory=True,
 )
 
-eval_data = total_data[120000:]
+eval_data = pd.read_csv("data/ratings_test.txt", delimiter="\t")
+# eval_data = total_data[120000:]
+eval_data = eval_data.dropna(axis=0)
 eval_text, eval_labels = (
     eval_data["document"].values,
     eval_data["label"].values
@@ -98,8 +99,15 @@ eval_loader = DataLoader(
     pin_memory=True,
 )
 
-engine, _, _, _ = deepspeed.initialize(
-    args=args, model=model, model_parameters=model.parameters()
+# engine, _, _, _ = deepspeed.initialize(
+#     args=args, model=model, model_parameters=model.parameters()
+# )
+optimizer = DeepSpeedCPUAdam(
+    lr=3e-5, weight_decay=3e-7, model_params=model.parameters()
+)
+
+engine, optimizer, _, _ = deepspeed.initialize(
+    args=args, model=model, optimizer=optimizer
 )
 # step = 0
 # preds = None
@@ -127,18 +135,9 @@ for epoch in range(args.epoch):
         )
         loss = output.loss
         engine.backward(loss)
-        engine.step()
+        optimizer.step()
         classification_results = output.logits.argmax(-1)
 
-        # logits = output[0]
-        # if preds is None:
-        #     preds = logits.detach().cpu().numpy()
-        # else:
-        #     preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-
-        # preds = np.argmax(preds, axis=-1)
-        # print(classification_results.size(), label.size())   ### size 동일 
-        # print(output.logits)
         acc = 0
         for res, lab in zip(classification_results, label):
             if res == lab:
@@ -169,14 +168,6 @@ for epoch in range(args.epoch):
             )
                 
             eval_classification_results = eval_out.logits.argmax(-1)
-
-            # logits = eval_out[0]
-            # if preds is None:
-            #     preds = logits.detach().cpu().numpy()
-            # else:
-            #     preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-
-            # preds = np.argmax(preds, axis=-1)
 
             eval_loss = eval_out.loss
 
