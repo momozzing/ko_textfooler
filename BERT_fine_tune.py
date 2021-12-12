@@ -145,37 +145,39 @@ for epoch in range(args.epoch):
     wandb.log({"acc": acc / len(classification_results)})   ## 탭하나 안에 넣으면 step단위로 볼수있음. 
 
     model.eval()
-    for eval in tqdm(eval_loader):
-        eval_text, eval_label = eval["data"], eval["label"].cuda()
-        eval_tokens = tokenizer(
-            eval_text,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            # is_split_into_words=True
-            max_length=140
-        )
-        input_ids = eval_tokens.input_ids.cuda()
-        attention_mask = eval_tokens.attention_mask.cuda()
-        
-        eval_out = engine.forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=eval_label
-        )
+    with torch.no_grad():
+        model.eval()
+        for eval in tqdm(eval_loader):
+            eval_text, eval_label = eval["data"], eval["label"].cuda()
+            eval_tokens = tokenizer(
+                eval_text,
+                return_tensors="pt",
+                truncation=True,
+                padding=True,
+                # is_split_into_words=True
+                max_length=140
+            )
+            input_ids = eval_tokens.input_ids.cuda()
+            attention_mask = eval_tokens.attention_mask.cuda()
             
-        eval_classification_results = eval_out.logits.argmax(-1)
-        eval_loss = eval_out.loss
+            eval_out = engine.forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=eval_label
+            )
+                
+            eval_classification_results = eval_out.logits.argmax(-1)
+            eval_loss = eval_out.loss
 
-        eval_acc = 0
-        for res, lab in zip(eval_classification_results, eval_label):
-            if res == lab:
-                eval_acc += 1
-        
-    wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
-    wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
-    wandb.log({"epoch": epochs})
-    torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}.pt")
+            eval_acc = 0
+            for res, lab in zip(eval_classification_results, eval_label):
+                if res == lab:
+                    eval_acc += 1
+            
+        wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
+        wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
+        wandb.log({"epoch": epochs})
+        torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 

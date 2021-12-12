@@ -29,19 +29,19 @@ random.seed(random_seed)
 ##################################
 
 parser = ArgumentParser()
-parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
-parser.add_argument("--local_rank", type=int)
+# parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
+# parser.add_argument("--local_rank", type=int)
 parser.add_argument("--epoch", default=20, type=int)
-parser.add_argument("--batch_size", default=128, type=int)
+parser.add_argument("--batch_size", default=64, type=int)
 # parser.add_argument("--cls_token", default=tokenizer.cls_token, type=str)
-parser.add_argument("--model", default="klue/bert-base", type=str)
+# parser.add_argument("--model", default="skt/kobert-base-v1", type=str)
 args = parser.parse_args()
 
 
 task = "NSMC"
-os.environ["TOKENIZERS_PARALLELISM"] = "true"
-# model_name = "skt/kobert-base-v1"
-tokenizer = AutoTokenizer.from_pretrained(args.model)
+# os.environ["TOKENIZERS_PARALLELISM"] = "true"
+model_name = "skt/kobert-base-v1"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 # SPECIAL_TOKENS = {
 #     "bos_token": "<bos>",
 #     "eos_token": "<eos>",
@@ -52,13 +52,13 @@ tokenizer = AutoTokenizer.from_pretrained(args.model)
 # tokenizer.add_special_tokens(SPECIAL_TOKENS)
 
 model = AutoModelForSequenceClassification.from_pretrained(
-    args.model,
+    model_name,
     num_labels=2,
 ).cuda()
 
 # model.resize_token_embeddings(len(tokenizer)) 
 
-wandb.init(project="ko_textfooler", name=f"{args.model}-{task}-deep")
+wandb.init(project="ko_textfooler", name=f"{model_name}-{task}-deep")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
 train_data = train_data[:120000]
@@ -68,7 +68,7 @@ train_text, train_labels = (
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t, "label": l}
+    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
 # print(dataset)
@@ -89,7 +89,7 @@ eval_text, eval_labels = (
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t, "label": l}
+    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 eval_loader = DataLoader(
@@ -134,46 +134,49 @@ for epoch in range(args.epoch):
         classification_results = output.logits.argmax(-1)
         # print(classification_results.size(), label.size())   ### size 동일 
         # print(output.logits)
+        # print(classification_results)
         acc = 0
         for res, lab in zip(classification_results, label):
+            print(res, lab)
             if res == lab:
                 acc += 1
 
     wandb.log({"loss": loss})
     wandb.log({"acc": acc / len(classification_results)})   ## 탭하나 안에 넣으면 step단위로 볼수있음. 
 
-    model.eval()
-    for eval in tqdm(eval_loader):
-        eval_text, eval_label = eval["data"], eval["label"].cuda()
-        eval_tokens = tokenizer(
-            eval_text,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-            # is_split_into_words=True
-            max_length=140
-        )
-        input_ids = eval_tokens.input_ids.cuda()
-        attention_mask = eval_tokens.attention_mask.cuda()
-        
-        eval_out = model.forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=eval_label
-        )
+    with torch.no_grad():
+        model.eval() 
+        for eval in tqdm(eval_loader):
+            eval_text, eval_label = eval["data"], eval["label"].cuda()
+            eval_tokens = tokenizer(
+                eval_text,
+                return_tensors="pt",
+                truncation=True,
+                padding=True,
+                # is_split_into_words=True
+                max_length=140
+            )
+            input_ids = eval_tokens.input_ids.cuda()
+            attention_mask = eval_tokens.attention_mask.cuda()
             
-        eval_classification_results = eval_out.logits.argmax(-1)
-        eval_loss = eval_out.loss
+            eval_out = model.forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=eval_label
+            )
+                
+            eval_classification_results = eval_out.logits.argmax(-1)
+            eval_loss = eval_out.loss
 
-        eval_acc = 0
-        for res, lab in zip(eval_classification_results, eval_label):
-            if res == lab:
-                eval_acc += 1
-        
-    wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
-    wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
-    wandb.log({"epoch": epochs})
-    torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}-deep.pt")
+            eval_acc = 0
+            for res, lab in zip(eval_classification_results, eval_label):
+                if res == lab:
+                    eval_acc += 1
+            
+        wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
+        wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
+        wandb.log({"epoch": epochs})
+        torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}-deep.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
