@@ -118,7 +118,7 @@ for epoch in range(args.epoch):
             truncation=True,
             padding=True,
             # is_split_into_words=True
-            max_length=140
+            # max_length=140
         )
 
         input_ids = tokens.input_ids.cuda()
@@ -128,10 +128,12 @@ for epoch in range(args.epoch):
             attention_mask=attention_mask,
             labels=label
         )
+        
         loss = output.loss
         loss.backward()        
         optimizer.step()
         classification_results = output.logits.argmax(-1)
+        # classification_results = np.argmax(output.logits, axis=-1)
         # print(classification_results.size(), label.size())   ### size 동일 
         # print(output.logits)
         # print(classification_results)
@@ -154,7 +156,7 @@ for epoch in range(args.epoch):
                 truncation=True,
                 padding=True,
                 # is_split_into_words=True
-                max_length=140
+                # max_length=140
             )
             input_ids = eval_tokens.input_ids.cuda()
             attention_mask = eval_tokens.attention_mask.cuda()
@@ -166,6 +168,8 @@ for epoch in range(args.epoch):
             )
                 
             eval_classification_results = eval_out.logits.argmax(-1)
+            # eval_classification_results = eval_out.logits.argmax(-1)
+
             eval_loss = eval_out.loss
 
             eval_acc = 0

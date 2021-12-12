@@ -10,30 +10,30 @@ import random
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, tokenization_utils
 
 import deepspeed
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 import wandb
 
 #############################################    -> 실험결과 FIX
-# random_seed = 1234
-# torch.manual_seed(random_seed)
-# torch.cuda.manual_seed(random_seed)
-# torch.cuda.manual_seed_all(random_seed) # if use multi-GPU
-# torch.backends.cudnn.deterministic = True
-# torch.backends.cudnn.benchmark = False
-# np.random.seed(random_seed)
-# random.seed(random_seed)
+random_seed = 1234
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.cuda.manual_seed_all(random_seed) # if use multi-GPU
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(random_seed)
+random.seed(random_seed)
 ##################################
 
 parser = ArgumentParser()
 parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
 parser.add_argument("--local_rank", type=int)
-parser.add_argument("--epoch", default=20, type=int)
-parser.add_argument("--batch_size", default=128, type=int)
+parser.add_argument("--epoch", default=30, type=int)
+parser.add_argument("--batch_size", default=256, type=int)
 # parser.add_argument("--cls_token", default=tokenizer.cls_token, type=str)
-parser.add_argument("--model", default="klue/bert-base", type=str)
+parser.add_argument("--model", default="skt/kobert-base-v1", type=str)
 args = parser.parse_args()
 
 
@@ -58,16 +58,17 @@ model = AutoModelForSequenceClassification.from_pretrained(
 # model.resize_token_embeddings(len(tokenizer)) 
 
 wandb.init(project="ko_textfooler", name=f"{args.model}-{task}")
-train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
-train_data = train_data.dropna(axis=0)
-train_data = train_data[:120000]
+total_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
+total_data = total_data.dropna(axis=0)
+
+train_data = total_data[:120000]
 train_text, train_labels = (
     train_data["document"].values,
     train_data["label"].values,
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": t, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
 # print(dataset)
@@ -79,16 +80,14 @@ train_loader = DataLoader(
     pin_memory=True,
 )
 
-eval_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
-eval_data = eval_data.dropna(axis=0)
-eval_data = eval_data[120000:]
+eval_data = total_data[120000:]
 eval_text, eval_labels = (
     eval_data["document"].values,
     eval_data["label"].values
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": t, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 eval_loader = DataLoader(
@@ -99,20 +98,15 @@ eval_loader = DataLoader(
     pin_memory=True,
 )
 
-optimizer = DeepSpeedCPUAdam(
-    lr=3e-5, weight_decay=3e-7, model_params=model.parameters()
+engine, _, _, _ = deepspeed.initialize(
+    args=args, model=model, model_parameters=model.parameters()
 )
-
-engine, optimizer, _, _ = deepspeed.initialize(
-    args=args, model=model, optimizer=optimizer
-)
-epochs = 0
 # step = 0
+# preds = None
+
 for epoch in range(args.epoch):
-    epochs += 1
     model.train()
     for train in tqdm(train_loader):
-        optimizer.zero_grad()
         text, label = train["data"], train["label"].cuda()
         tokens = tokenizer(
             text,
@@ -125,6 +119,7 @@ for epoch in range(args.epoch):
 
         input_ids = tokens.input_ids.cuda()
         attention_mask = tokens.attention_mask.cuda()
+
         output = engine.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -132,8 +127,16 @@ for epoch in range(args.epoch):
         )
         loss = output.loss
         engine.backward(loss)
-        optimizer.step()
+        engine.step()
         classification_results = output.logits.argmax(-1)
+
+        # logits = output[0]
+        # if preds is None:
+        #     preds = logits.detach().cpu().numpy()
+        # else:
+        #     preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+
+        # preds = np.argmax(preds, axis=-1)
         # print(classification_results.size(), label.size())   ### size 동일 
         # print(output.logits)
         acc = 0
@@ -144,11 +147,10 @@ for epoch in range(args.epoch):
     wandb.log({"loss": loss})
     wandb.log({"acc": acc / len(classification_results)})   ## 탭하나 안에 넣으면 step단위로 볼수있음. 
 
-    model.eval()
     with torch.no_grad():
         model.eval()
-        for eval in tqdm(eval_loader):
-            eval_text, eval_label = eval["data"], eval["label"].cuda()
+        for eval_ in tqdm(eval_loader):
+            eval_text, eval_label = eval_["data"], eval_["label"].cuda()
             eval_tokens = tokenizer(
                 eval_text,
                 return_tensors="pt",
@@ -167,6 +169,15 @@ for epoch in range(args.epoch):
             )
                 
             eval_classification_results = eval_out.logits.argmax(-1)
+
+            # logits = eval_out[0]
+            # if preds is None:
+            #     preds = logits.detach().cpu().numpy()
+            # else:
+            #     preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+
+            # preds = np.argmax(preds, axis=-1)
+
             eval_loss = eval_out.loss
 
             eval_acc = 0
@@ -176,8 +187,8 @@ for epoch in range(args.epoch):
             
         wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
         wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
-        wandb.log({"epoch": epochs})
-        torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epochs}-{task}.pt")
+        wandb.log({"epoch": epoch})
+        torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epoch}-{task}.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
