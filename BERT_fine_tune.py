@@ -14,6 +14,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import deepspeed
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 import wandb
+from kobert_tokenizer import KoBERTTokenizer
 
 #############################################    -> 실험결과 FIX
 random_seed = 1234
@@ -29,7 +30,7 @@ random.seed(random_seed)
 parser = ArgumentParser()
 parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
 parser.add_argument("--local_rank", type=int)
-parser.add_argument("--epoch", default=30, type=int)
+parser.add_argument("--epoch", default=10, type=int)
 parser.add_argument("--batch_size", default=256, type=int)
 # parser.add_argument("--cls_token", default=tokenizer.cls_token, type=str)
 parser.add_argument("--model", default="skt/kobert-base-v1", type=str)
@@ -39,7 +40,8 @@ args = parser.parse_args()
 task = "NSMC"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 # model_name = "skt/kobert-base-v1"
-tokenizer = AutoTokenizer.from_pretrained(args.model)
+# tokenizer = AutoTokenizer.from_pretrained(args.model)
+tokenizer = KoBERTTokenizer.from_pretrained('skt/kobert-base-v1')
 # SPECIAL_TOKENS = {
 #     "bos_token": "<bos>",
 #     "eos_token": "<eos>",
@@ -179,7 +181,7 @@ for epoch in range(args.epoch):
         wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
         wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
         wandb.log({"epoch": epoch})
-        torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epoch}-{task}.pt")
+        torch.save(model.state_dict(), f"model_save/{args.model.replace('/', '-')}-{epoch}-{task}-final.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
