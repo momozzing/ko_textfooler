@@ -32,7 +32,7 @@ parser = ArgumentParser()
 # parser.add_argument("--deepspeed_config", type=str, default="ds_config.json")
 # parser.add_argument("--local_rank", type=int)
 parser.add_argument("--epoch", default=20, type=int)
-parser.add_argument("--batch_size", default=64, type=int)
+parser.add_argument("--batch_size", default=128, type=int)
 # parser.add_argument("--cls_token", default=tokenizer.cls_token, type=str)
 # parser.add_argument("--model", default="skt/kobert-base-v1", type=str)
 args = parser.parse_args()
@@ -61,14 +61,14 @@ model = AutoModelForSequenceClassification.from_pretrained(
 wandb.init(project="ko_textfooler", name=f"{model_name}-{task}-deep")
 train_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
 train_data = train_data.dropna(axis=0)
-train_data = train_data[:120000]
+# train_data = train_data[:120000]
 train_text, train_labels = (
     train_data["document"].values,
     train_data["label"].values,
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": t, "label": l}
     for t, l in zip(train_text, train_labels)
 ]
 # print(dataset)
@@ -80,16 +80,16 @@ train_loader = DataLoader(
     pin_memory=True,
 )
 
-eval_data = pd.read_csv("data/ratings_train.txt", delimiter="\t")
+eval_data = pd.read_csv("data/ratings_test.txt", delimiter="\t")
 eval_data = eval_data.dropna(axis=0)
-eval_data = eval_data[120000:]
+# eval_data = eval_data[120000:]
 eval_text, eval_labels = (
     eval_data["document"].values,
     eval_data["label"].values
 )
 
 dataset = [
-    {"data": tokenizer.cls_token + t + tokenizer.sep_token, "label": l}
+    {"data": t, "label": l}
     for t, l in zip(eval_text, eval_labels)
 ]
 eval_loader = DataLoader(
@@ -104,10 +104,10 @@ optimizer = AdamW(params=model.parameters(),
     lr=3e-5, weight_decay=3e-7
 )
 
-epochs = 0
+# epochs = 0
 # step = 0
 for epoch in range(args.epoch):
-    epochs += 1
+    # epochs += 1
     model.train()
     for train in tqdm(train_loader):
         optimizer.zero_grad()
@@ -118,7 +118,7 @@ for epoch in range(args.epoch):
             truncation=True,
             padding=True,
             # is_split_into_words=True
-            # max_length=140
+            max_length=140
         )
 
         input_ids = tokens.input_ids.cuda()
@@ -139,7 +139,7 @@ for epoch in range(args.epoch):
         # print(classification_results)
         acc = 0
         for res, lab in zip(classification_results, label):
-            print(res, lab)
+            # print(res, lab)
             if res == lab:
                 acc += 1
 
@@ -156,7 +156,7 @@ for epoch in range(args.epoch):
                 truncation=True,
                 padding=True,
                 # is_split_into_words=True
-                # max_length=140
+                max_length=140
             )
             input_ids = eval_tokens.input_ids.cuda()
             attention_mask = eval_tokens.attention_mask.cuda()
@@ -179,8 +179,8 @@ for epoch in range(args.epoch):
             
         wandb.log({"eval_loss": eval_loss})   ## 이미 다 적용된 상태인듯..
         wandb.log({"eval_acc": eval_acc / len(eval_classification_results)})             ## 탭하나 안에 넣으면 step단위로 볼수있음. 
-        wandb.log({"epoch": epochs})
-        torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epochs}-{task}-deep.pt")
+        wandb.log({"epoch": epoch})
+        torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{epoch}-{task}-deep.pt")
         # torch.save(model.state_dict(), f"model_save/{model_name.replace('/', '-')}-{task}-{epoch}-{random_seed}-mono_post.pt")
 
 
